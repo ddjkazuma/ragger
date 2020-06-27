@@ -1,0 +1,18 @@
+# 数据库配置
+database:
+  host: localhost
+  port: 3306
+  database: ragger
+  user: root
+  password: 123456
+
+# 有道api配置
+youdao:
+  # 有道api的app_key
+  app_key:
+  # 有道api的app_key
+  app_secret:
+  api_url: https://openapi.youdao.com/api
+
+
+  
