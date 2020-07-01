@@ -1,74 +1,88 @@
 require 'aasm'
-require_relative 'response'
+# require_relative 'response'
+require_relative 'components'
 # 反应器，维护一个状态机
 class Reactor
   
   include AASM
+  include Components::Colour
   
   def initialize(supervisor)
     @supervisor = supervisor
+    @summary = {reviewed: 0, successful: 0, failed: 0}
   end
   
-  class << self
-    def rotate
-      loop do
-        if block_given?
-          input = Readline::readline("> ", true)
-          response = yield input
-          puts response
-          break if response.abnormal?
-        end
-      end
-    end
-
-    
-    def before_review_prompt
-      %w[即将开始复习，复习开始后系统会逐个输出需要复习的英文单词，请输入其中文释义用以匹配该单词 复习过程中可输入"exit"退出复习，开始复习?(Y/N)].each do |line|
-        puts line
-      end
-    end
+  def on_start
+    colorized_texts = [
+      "即将开始复习单词",
+      "请输入单词对应的释义来回答单词, 或输入对应的操作符来控制程序, 按回车键确认",
+      ":EXIT) 退出程序 ",
+      "是否确认输出<:YES/:NO>"
+    ].map { |element| common_colorize(element) }
+    Components::Response.new colorized_texts
   end
   
-  def react_by_input(input)
-    #根据输入来作出反应
-    # 改版后的程序的输入会有以下几种可能
-    # 1, yes
-    # 1，no
-    # 3, exit
-    # 4, 其他单词
-    case aasm_read_state
-    when :preparing
-      if input[0].upcase == "N"
-        # 如果回答是N(NO)则直接放弃，退出程序
-        abandon
-        Response.review_termed
-      elsif input[0].upcase == "Y"
-        # 如果回答是Y(YES)则可以开始复习，触发之后要检查一下当前是否有可供复习的词
-        if @supervisor.get_words_batch.size == 0
-          return Response.empty_words
-        end
-        start #触发开始复习事件，状态变为复习中状态
-        Response.normal [@supervisor.export_subject] #先导出需要复习的单词
-      else
-        Response.illegal_input
-      end
-    when :reviewing
-      if input.upcase == 'EXIT'
-        return Response.review_termed;
-      end
-      answer = @supervisor.validate_answer(input).tap do |answer|
-        answer && @supervisor.subject.step_forward
-      end
-      text = answer ? "回答正确" : "回答错误, 正确释义是: #{@supervisor.subject.exp_cn}"
-      begin
-        subject_word = @supervisor.export_subject
-        Response.normal [text, subject_word]
-      rescue StopIteration
-        Response.review_finished.prepend text
-      end
+  
+  def handle_preparing(request)
+    operation = request.operation
+    puts operation
+    if operation == "NO"
+      # 如果回答是N(NO)则直接放弃，退出程序
+      abandon
+      Components::Response.new.terminate
+    elsif operation == "YES"
+      # 如果回答是Y(YES)则可以开始复习，触发之后要检查一下当前是否有可供复习的词
+      Components::Response.new [notice_colorize("没有可供复习的单词")] if @supervisor.get_words_batch.size == 0
+      start #触发开始复习事件，状态变为复习中状态
+      Components::Response.new [common_colorize(@supervisor.export_subject)] #先导出需要复习的单词
     else
-      Response.illegal_input
+      response_with_illegal_input
     end
+  end
+  
+  def handle_reviewing(request)
+    operation = request.operation
+    if operation == "EXIT"
+      Components::Response.new [error_colorize("退出程序")]
+    else
+      word = request.params[0]
+      answer = @supervisor.validate_answer(word)
+      if answer
+        answer && @supervisor.subject.step_forward
+        colorized_text = [success_colorize("回答正确")]
+      else
+        colorized_text = [notice_colorize("回答错误, 其正确释义是: #{@supervisor.subject.exp_cn}")]
+      end
+      begin
+        colorized_text << common_colorize(@supervisor.export_subject)
+        Components::Response.new colorized_text
+      rescue StopIteration
+        colorized_text << success_colorize("复习结束")
+        Components::Response.new(colorized_text).terminate
+      end
+    end
+  end
+  
+  def handle_finished
+  
+  end
+  
+  # 输入无法识别
+  def response_with_illegal_input
+    Components::Response.new([error_colorize("无法识别的输入")])
+  end
+  
+  # 对复习结果进行总结
+  def summary
+  
+  end
+  
+  def handle(request)
+    send get_handle_method_by_state, request
+  end
+  
+  def get_handle_method_by_state
+    'handle_' + aasm_read_state.to_s
   end
   
   

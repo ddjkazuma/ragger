@@ -4,8 +4,10 @@ require 'active_record'
 require 'rainbow'
 require_relative 'supervisor'
 require_relative 'reactor'
+require_relative 'components'
 
-class Ragger < Thor
+class Command < Thor
+  Thor::Base
   def initialize(*params)
     super *params
     @configuration = YAML::load_file(__dir__+'/config.yml')
@@ -17,26 +19,25 @@ class Ragger < Thor
   desc "query WORD", "查询单词"
   
   def query(word)
-    # begin
+    begin
       #fixme
       puts @supervisor.seek(word)
-    # rescue Exception
-    #   puts Rainbow("无法找到单词释义，请确认单词有效").red
-    # end
+    rescue Exception
+      puts Rainbow("无法找到单词释义，请确认单词有效").red
+    end
   end
   
   desc "review", "开始复习单词"
   
   def review
-    begin
-      reactor = Reactor.new @supervisor
-      Reactor.before_review_prompt
-      Reactor.rotate do |input|
-        reactor.react_by_input input
-      end
-    rescue Interrupt
-      # 优雅退出
-      puts "退出程序"
+    reactor = Reactor.new @supervisor
+    puts reactor.on_start
+    loop do
+      input = Readline.readline(Rainbow("> ").green, true)
+      request =  Components::Request.new input
+      response = reactor.handle request
+      puts response
+      break if response.should_terminate?
     end
   end
   
@@ -51,9 +52,12 @@ class Ragger < Thor
       database: db_config['database'],
     )
   end
+  
+  #todo 该交互命令行可以考虑做成模块化的东西
 end
 
-Ragger.start ARGV
+
+Command.start ARGV
 
 
 
