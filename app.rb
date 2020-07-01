@@ -21,7 +21,7 @@ class Command < Thor
   def query(word)
     begin
       #fixme
-      puts @supervisor.seek(word)
+      puts Rainbow(@supervisor.seek(word)).green
     rescue Exception
       puts Rainbow("无法找到单词释义，请确认单词有效").red
     end
