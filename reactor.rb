@@ -1,5 +1,4 @@
 require 'aasm'
-# require_relative 'response'
 require_relative 'components'
 # 反应器，维护一个状态机
 class Reactor
@@ -9,7 +8,7 @@ class Reactor
   
   def initialize(supervisor)
     @supervisor = supervisor
-    @summary = {reviewed: 0, successful: 0, failed: 0}
+    @summary = {successful: 0, failed: 0}
   end
   
   def on_start
@@ -50,14 +49,17 @@ class Reactor
       if answer
         answer && @supervisor.subject.step_forward
         colorized_text = [success_colorize("回答正确")]
+        @summary[:successful]+=1
       else
         colorized_text = [notice_colorize("回答错误, 其正确释义是: #{@supervisor.subject.exp_cn}")]
+        @summary[:failed]+=1
       end
       begin
         colorized_text << common_colorize(@supervisor.export_subject)
         Components::Response.new colorized_text
       rescue StopIteration
         colorized_text << success_colorize("复习结束")
+        colorized_text += summary
         Components::Response.new(colorized_text).terminate
       end
     end
@@ -74,13 +76,17 @@ class Reactor
   
   # 对复习结果进行总结
   def summary
-  
+    colorized_texts = [
+      common_colorize("本次复习共完成#{@summary[:successful]+@summary[:failed]}个单词"),
+      success_colorize("其中成功#{@summary[:successful]}个, ")+notice_colorize("失败#{@summary[:failed]}个")
+    ]
   end
   
   def handle(request)
     send get_handle_method_by_state, request
   end
   
+  # 根据当前状态获取操作方法
   def get_handle_method_by_state
     'handle_' + aasm_read_state.to_s
   end
